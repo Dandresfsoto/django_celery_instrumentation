@@ -1,0 +1,96 @@
+version: "3.7"
+
+volumes:
+  db_data:
+    name: db_data
+  prometheus-data:
+    name: prometheus-data
+  grafana-data:
+    name: grafana-data
+
+services:
+
+  database:
+    image: postgres:12.15
+    env_file:
+      - ./.env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    restart: always
+
+  redis:
+    image: redis
+    container_name: integrations_redis
+    ports:
+      - 6379:6379
+    restart: always
+
+  app:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: django_celery_test:latest
+    env_file:
+      - ./.env
+    ports:
+      - 8000:8000
+    depends_on:
+      - database
+      - migration
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+  migration:
+    build: .
+    image: django_celery_test:latest
+    env_file:
+      - ./.env
+    links:
+      - database
+    depends_on:
+      - database
+    command: python manage.py migrate
+
+  celeryworker:
+    image: django_celery_test:latest
+    env_file:
+      - ./.env
+    depends_on:
+      - database
+      - redis
+      - app
+    restart: always
+    command: ["celery", "-A", "core.celery_app", "worker", "-l", "info"]
+
+  prometheus:
+    hostname: prometheus
+    image: prom/prometheus:v2.37.6
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+    ports:
+      - "9090:9090"
+
+  zipkin:
+    hostname: zipkin
+    image: openzipkin/zipkin
+    restart: on-failure
+    ports:
+      - "9411:9411"
+
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.72.0
+    command:
+      - "--config=/etc/otel-collector-config.yml"
+    depends_on:
+      - zipkin
+      - prometheus
+    ports:
+      - "14268:14268/tcp" # jaeger http
+      - "4317:4317"       # OTLP gRPC receiver
+    volumes:
+      - ./observability/otel-collector-config.yml:/etc/otel-collector-config.yml

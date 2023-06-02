@@ -1,0 +1,37 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+exporters:
+  logging:
+    loglevel: debug
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    namespace: "prometheus"
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+  zipkin:
+    endpoint: "http://zipkin:9411/api/v2/spans"
+
+processors:
+  batch:
+  spanmetrics:
+    metrics_exporter: prometheusremotewrite
+
+service:
+  telemetry:
+    logs:
+      level: error
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [zipkin]
+      processors: [batch, spanmetrics]
+    metrics:
+      receivers: [otlp]
+      exporters: [logging, prometheusremotewrite]
+      processors: [batch]

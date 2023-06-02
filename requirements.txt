@@ -1,0 +1,10 @@
+Django==4.2.1
+celery==5.2.7
+psycopg2==2.9.6
+redis==4.5.5
+flower==1.2.0
+django-celery-results==2.5.1
+django-celery-beat==2.5.0
+djangorestframework==3.14.0
+klym-telemetry==0.1.9
+requests==2.31.0
